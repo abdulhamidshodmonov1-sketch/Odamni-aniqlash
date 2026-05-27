@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Odam Aniqlash</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0a; color: #fff; min-height: 100vh; }
+  header { padding: 1rem 1.25rem 0.75rem; border-bottom: 1px solid #1e1e1e; }
+  header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.3px; }
+  header p { font-size: 13px; color: #666; margin-top: 2px; }
+  #video-wrap { position: relative; width: 100%; background: #000; aspect-ratio: 4/3; }
+  video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  canvas#overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  #hud { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; justify-content: space-between; align-items: center; }
+  #rec-badge { display: none; align-items: center; gap: 5px; background: rgba(0,0,0,0.6); padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; color: #ff4444; }
+  #rec-badge .reddot { width: 7px; height: 7px; border-radius: 50%; background: #ff4444; animation: blink 1s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+  #person-count-hud { background: rgba(0,0,0,0.6); padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; display: none; }
+  .person-hud { color: #ff6b35; }
+  #status-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #111; border-bottom: 1px solid #1e1e1e; font-size: 13px; color: #888; }
+  .sdot { width: 8px; height: 8px; border-radius: 50%; background: #333; flex-shrink: 0; }
+  .sdot.ready { background: #1a7a55; animation: pulse 1.5s infinite; }
+  .sdot.alert { background: #ff6b35; animation: pulse 0.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  #controls { padding: 1rem 1.25rem; display: flex; flex-direction: column; gap: 12px; }
+  #btn-start { width: 100%; padding: 14px; border-radius: 12px; border: none; background: #ff6b35; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; letter-spacing: -0.2px; transition: opacity 0.2s, transform 0.1s; }
+  #btn-start:active { transform: scale(0.98); opacity: 0.85; }
+  #btn-start:disabled { background: #2a2a2a; color: #555; }
+  .slider-row { display: flex; align-items: center; gap: 12px; }
+  .slider-row label { font-size: 13px; color: #888; white-space: nowrap; }
+  .slider-row input[type=range] { flex: 1; accent-color: #ff6b35; }
+  .slider-row span { font-size: 13px; color: #ccc; min-width: 32px; text-align: right; }
+  .cooldown-row { display: flex; align-items: center; gap: 12px; }
+  .cooldown-row label { font-size: 13px; color: #888; white-space: nowrap; }
+  .cooldown-row input[type=range] { flex: 1; accent-color: #ff6b35; }
+  .cooldown-row span { font-size: 13px; color: #ccc; min-width: 42px; text-align: right; }
+  #metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 0 1.25rem 1rem; }
+  .metric { background: #111; border: 1px solid #1e1e1e; border-radius: 10px; padding: 10px; text-align: center; }
+  .metric .val { font-size: 22px; font-weight: 700; color: #fff; }
+  .metric .lbl { font-size: 11px; color: #555; margin-top: 2px; }
+  #notif-section { padding: 0 1.25rem 2rem; }
+  .section-title { font-size: 12px; font-weight: 600; color: #444; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
+  .notif-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: #111; border: 1px solid #1e1e1e; border-radius: 10px; margin-bottom: 6px; font-size: 13px; color: #ccc; animation: slideIn 0.25s ease; }
+  @keyframes slideIn { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:none} }
+  .notif-icon { font-size: 18px; }
+  .notif-text { flex: 1; }
+  .notif-text strong { color: #ff6b35; display: block; font-size: 13px; }
+  .notif-text span { font-size: 12px; color: #555; }
+  .empty-state { text-align: center; padding: 2rem; color: #333; font-size: 13px; }
+  #notif-permission-banner { margin: 0 1.25rem 1rem; padding: 12px 14px; background: #1a1200; border: 1px solid #3a2a00; border-radius: 10px; font-size: 13px; color: #aaa; display: none; }
+  #notif-permission-banner button { background: #ff6b35; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; margin-top: 8px; display: block; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>👁 Odam Aniqlash</h1>
+  <p>Kamera orqali odamni ko'rsa bildirishnoma yuboradi</p>
+</header>
+
+<div id="video-wrap">
+  <video id="video" autoplay muted playsinline></video>
+  <canvas id="overlay"></canvas>
+  <div id="hud">
+    <div id="rec-badge"><div class="reddot"></div> YOZILMOQDA</div>
+    <div id="person-count-hud"></div>
+  </div>
+</div>
+
+<div id="status-bar">
+  <div class="sdot" id="sdot"></div>
+  <span id="status-text">Kamera yoqilmagan</span>
+</div>
+
+<div id="notif-permission-banner" id="npb">
+  ⚠️ Bildirishnoma ruxsati berilmagan. Brauzer bildirishnomalari uchun ruxsat bering.
+  <button onclick="requestNotifPerm()">Ruxsat berish</button>
+</div>
+
+<div id="controls">
+  <button id="btn-start">▶ Kamerani yoqish</button>
+  <div class="slider-row">
+    <label>Sezgirlik</label>
+    <input type="range" id="sens" min="0.3" max="0.85" step="0.05" value="0.55">
+    <span id="sens-val">55%</span>
+  </div>
+  <div class="cooldown-row">
+    <label>Oraliq</label>
+    <input type="range" id="cooldown" min="2" max="30" step="1" value="5">
+    <span id="cd-val">5 sek</span>
+  </div>
+</div>
+
+<div id="metrics">
+  <div class="metric"><div class="val" id="c-now">0</div><div class="lbl">Hozir</div></div>
+  <div class="metric"><div class="val" id="c-total">0</div><div class="lbl">Jami</div></div>
+  <div class="metric"><div class="val" id="c-notif">0</div><div class="lbl">Xabar</div></div>
+</div>
+
+<div id="notif-section">
+  <div class="section-title">Xabarnomalar</div>
+  <div id="notif-list"><div class="empty-state">Hali xabarnoma yo'q</div></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+<script>
+const video = document.getElementById('video');
+const overlay = document.getElementById('overlay');
+const ctx = overlay.getContext('2d');
+const btnStart = document.getElementById('btn-start');
+const sdot = document.getElementById('sdot');
+const statusText = document.getElementById('status-text');
+const notifList = document.getElementById('notif-list');
+const sensInput = document.getElementById('sens');
+const sensVal = document.getElementById('sens-val');
+const cdInput = document.getElementById('cooldown');
+const cdVal = document.getElementById('cd-val');
+const recBadge = document.getElementById('rec-badge');
+const personHud = document.getElementById('person-count-hud');
+
+let model = null, detecting = false;
+let totalNotif = 0, totalDetected = 0;
+let lastNotifTime = 0;
+
+sensInput.oninput = () => sensVal.textContent = Math.round(sensInput.value * 100) + '%';
+cdInput.oninput = () => cdVal.textContent = cdInput.value + ' sek';
+
+async function requestNotifPerm() {
+  if ('Notification' in window) {
+    const p = await Notification.requestPermission();
+    if (p === 'granted') document.getElementById('notif-permission-banner').style.display = 'none';
+  }
+}
+
+function checkNotifPerm() {
+  if ('Notification' in window && Notification.permission !== 'granted') {
+    document.getElementById('notif-permission-banner').style.display = 'block';
+  }
+}
+
+function sendNotif(count) {
+  const now = new Date();
+  const time = now.toLocaleTimeString('uz-UZ');
+  totalNotif++;
+  document.getElementById('c-notif').textContent = totalNotif;
+
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try {
+      new Notification('👤 Odam aniqlandi!', {
+        body: count + ' ta odam ko\'rindi — ' + time,
+        tag: 'person-detect',
+        renotify: true,
+        vibrate: [200, 100, 200]
+      });
+    } catch(e) {}
+  }
+
+  const item = document.createElement('div');
+  item.className = 'notif-item';
+  item.innerHTML = `<span class="notif-icon">👤</span><div class="notif-text"><strong>${count} ta odam aniqlandi</strong><span>${time}</span></div>`;
+  const empty = notifList.querySelector('.empty-state');
+  if (empty) empty.remove();
+  notifList.prepend(item);
+  if (notifList.children.length > 10) notifList.removeChild(notifList.lastChild);
+}
+
+async function detect() {
+  if (!detecting || !model) return;
+  overlay.width = video.videoWidth;
+  overlay.height = video.videoHeight;
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+  let preds = [];
+  try { preds = await model.detect(video); } catch(e) {}
+
+  const thresh = parseFloat(sensInput.value);
+  const persons = preds.filter(p => p.class === 'person' && p.score >= thresh);
+
+  const scaleX = overlay.width / video.videoWidth;
+  const scaleY = overlay.height / video.videoHeight;
+
+  persons.forEach(p => {
+    const [x,y,w,h] = p.bbox;
+    ctx.strokeStyle = '#ff6b35';
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(x, y, w, h);
+    ctx.fillStyle = '#ff6b35';
+    ctx.fillRect(x, y - 22, Math.min(w, 100), 22);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillText('Odam ' + Math.round(p.score * 100) + '%', x + 5, y - 6);
+  });
+
+  document.getElementById('c-now').textContent = persons.length;
+
+  if (persons.length > 0) {
+    totalDetected += persons.length;
+    document.getElementById('c-total').textContent = totalDetected;
+    sdot.className = 'sdot alert';
+    statusText.textContent = persons.length + ' ta odam aniqlandi!';
+    personHud.style.display = 'block';
+    personHud.innerHTML = '<span class="person-hud">👤 ' + persons.length + ' ta odam</span>';
+    const cooldownMs = parseInt(cdInput.value) * 1000;
+    if (Date.now() - lastNotifTime > cooldownMs) {
+      lastNotifTime = Date.now();
+      sendNotif(persons.length);
+    }
+  } else {
+    sdot.className = 'sdot ready';
+    statusText.textContent = 'Kuzatilmoqda...';
+    personHud.style.display = 'none';
+  }
+
+  requestAnimationFrame(detect);
+}
+
+btnStart.addEventListener('click', async function startCam() {
+  btnStart.disabled = true;
+  btnStart.textContent = 'Yuklanmoqda...';
+  statusText.textContent = 'Kamera ruxsati so\'ralmoqda...';
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    video.srcObject = stream;
+    await video.play();
+  } catch(e) {
+    statusText.textContent = 'Kamera ruxsati berilmadi!';
+    btnStart.disabled = false;
+    btnStart.textContent = '▶ Kamerani yoqish';
+    return;
+  }
+
+  statusText.textContent = 'AI modeli yuklanmoqda... (bir necha soniya)';
+  try {
+    model = await cocoSsd.load({ base: 'mobilenet_v2' });
+  } catch(e) {
+    statusText.textContent = 'Model yuklanmadi — internet aloqasini tekshiring';
+    btnStart.disabled = false;
+    btnStart.textContent = '▶ Kamerani yoqish';
+    return;
+  }
+
+  checkNotifPerm();
+  if ('Notification' in window && Notification.permission === 'default') {
+    await Notification.requestPermission();
+    document.getElementById('notif-permission-banner').style.display = 'none';
+  }
+
+  detecting = true;
+  recBadge.style.display = 'flex';
+  sdot.className = 'sdot ready';
+  statusText.textContent = 'Kuzatilmoqda...';
+  btnStart.textContent = '⏹ To\'xtatish';
+  btnStart.disabled = false;
+  btnStart.removeEventListener('click', startCam);
+  btnStart.addEventListener('click', () => {
+    detecting = false;
+    video.srcObject?.getTracks().forEach(t => t.stop());
+    video.srcObject = null;
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+    sdot.className = 'sdot';
+    statusText.textContent = 'To\'xtatildi';
+    document.getElementById('c-now').textContent = '0';
+    recBadge.style.display = 'none';
+    personHud.style.display = 'none';
+    btnStart.textContent = '▶ Kamerani yoqish';
+    btnStart.addEventListener('click', startCam);
+  }, { once: true });
+
+  detect();
+});
+</script>
+</body>
+</html>
