@@ -1,1 +1,0 @@
-# Odamni-aniqlash (1)
